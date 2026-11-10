@@ -801,6 +801,30 @@ impl<I: VCodeInst> MachBuffer<I> {
         // Post-invariant: by `optimize_branches()` (see argument there).
     }
 
+    /// Emit padding with `emit` before the labels bound at the current
+    /// offset, moving them to the end of the padding, so that code reaching
+    /// them by a branch skips it and code falling through executes it.
+    ///
+    /// This is used after `bind_label`, so that a branch to the label that
+    /// branch simplification removes is gone before the padding is measured.
+    pub fn pad_before_tail_labels(&mut self, emit: impl FnOnce(&mut Self)) {
+        self.lazily_clear_labels_at_tail();
+        let labels = core::mem::take(&mut self.labels_at_tail);
+        emit(self);
+        let offset = self.cur_offset();
+        for &label in &labels {
+            debug_assert_eq!(self.label_aliases[label.0 as usize], UNKNOWN_LABEL);
+            self.label_offsets[label.0 as usize] = offset;
+        }
+        self.labels_at_tail = labels;
+        self.labels_at_tail_off = offset;
+
+        // Post-invariant: `labels_at_tail` is again the complete list of
+        // labels bound at `cur_offset()`, and no branch in `latest_branches`
+        // ends at it, since the padding follows them.
+        self.purge_latest_branches();
+    }
+
     /// Lazily clear `labels_at_tail` if the tail offset has moved beyond the
     /// offset that it applies to.
     fn lazily_clear_labels_at_tail(&mut self) {

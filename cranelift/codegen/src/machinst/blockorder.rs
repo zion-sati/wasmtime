@@ -91,6 +91,9 @@ pub struct BlockLoweringOrder {
     cold_blocks: FxHashSet<BlockIndex>,
     /// Lowered blocks that are indirect branch targets.
     indirect_branch_targets: FxHashSet<BlockIndex>,
+    /// The header of each innermost loop, mapped to the end (exclusive) of
+    /// the loop's contiguous range of blocks in `lowered_order`.
+    innermost_loops: FxHashMap<BlockIndex, BlockIndex>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -234,7 +237,7 @@ impl BlockLoweringOrder {
         // Step 3: group blocks belonging to natural loops together. This
         // significantly helps register allocator that perform live range
         // splitting only using the linear instruction order.
-        Self::group_loops(&mut lowered_order, loop_analysis);
+        let innermost_loop_ranges = Self::group_loops(&mut lowered_order, loop_analysis);
 
         // Step 4: create a mapping between blocks and lowered blocks.
         let mut blockindex_by_block = SecondaryMap::with_default(BlockIndex::invalid());
@@ -315,6 +318,10 @@ impl BlockLoweringOrder {
             blockindex_by_block,
             cold_blocks,
             indirect_branch_targets,
+            innermost_loops: innermost_loop_ranges
+                .into_iter()
+                .map(|(start, end)| (BlockIndex::new(start), BlockIndex::new(end)))
+                .collect(),
         };
 
         trace!("BlockLoweringOrder: {:#?}", result);
@@ -325,9 +332,12 @@ impl BlockLoweringOrder {
     /// blocks after the main loop body. Since natural loops are dominated by
     /// their loop header, this maintains the dominance order required by
     /// lowering, which visits blocks in reverse order to see uses before defs.
-    fn group_loops(order: &mut Vec<LoweredBlock>, loops: &LoopAnalysis) {
+    ///
+    /// Returns the range in `order` of each innermost loop, whose first block
+    /// is its header.
+    fn group_loops(order: &mut Vec<LoweredBlock>, loops: &LoopAnalysis) -> Vec<(usize, usize)> {
         if !loops.is_valid() || loops.loops().len() == 0 {
-            return;
+            return Vec::new();
         }
 
         #[derive(Clone, Copy)]
@@ -388,17 +398,36 @@ impl BlockLoweringOrder {
         }
 
         // Starting from the root loop, add all blocks in order, recursively
-        // expanding inner loops where `Item::Loop` is found.
-        let mut stack: SmallVec<[_; 8]> = smallvec![loop_blocks[0].iter()];
-        while let Some(iter) = stack.last_mut() {
+        // expanding inner loops where `Item::Loop` is found, and recording
+        // where each loop without inner loops starts and ends.
+        let mut innermost = Vec::new();
+        let mut stack: SmallVec<[_; 8]> = smallvec![(0, 0, loop_blocks[0].iter())];
+        while let Some((idx, start, iter)) = stack.last_mut() {
             match iter.next() {
                 Some(&Item::Block(block)) => order.push(block),
-                Some(&Item::Loop(child)) => stack.push(loop_blocks[child].iter()),
+                Some(&Item::Loop(child)) => {
+                    stack.push((child, order.len(), loop_blocks[child].iter()))
+                }
                 None => {
+                    let (idx, start) = (*idx, *start);
+                    if idx != 0
+                        && !loop_blocks[idx]
+                            .iter()
+                            .any(|item| matches!(item, Item::Loop(_)))
+                    {
+                        innermost.push((start, order.len()));
+                    }
                     stack.pop();
                 }
             }
         }
+        innermost
+    }
+
+    /// If `block` is the header of an innermost loop, the end (exclusive) of
+    /// the loop's range of blocks in the lowered order.
+    pub fn innermost_loop_end(&self, block: BlockIndex) -> Option<BlockIndex> {
+        self.innermost_loops.get(&block).copied()
     }
 
     /// Get the lowered order of blocks.

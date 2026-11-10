@@ -333,6 +333,41 @@ pub(crate) fn define() -> SettingGroup {
     );
 
     settings.add_num(
+        "loop_align_log2",
+        "The log2 of the alignment of innermost loop headers",
+        r#"
+            Aligns the first instruction of each innermost loop that is not
+            cold to this power of two, so that the loop's placement relative
+            to instruction fetch boundaries does not depend on the code that
+            precedes it in the function. A header is aligned only when the
+            padding it needs is at most `loop_align_max_padding` bytes and the
+            loop has at most `loop_align_max_insts` machine instructions.
+
+            The default for this option is 0, which aligns no loops.
+        "#,
+        0,
+    );
+
+    settings.add_num(
+        "loop_align_max_padding",
+        "The most bytes of padding inserted to align a loop header",
+        r#"
+            A loop header that would need more padding than this to reach the
+            alignment of `loop_align_log2` is left unaligned.
+        "#,
+        16,
+    );
+
+    settings.add_num(
+        "loop_align_max_insts",
+        "The most machine instructions in a loop whose header is aligned",
+        r#"
+            Larger loops are left unaligned; 0 means no limit.
+        "#,
+        0,
+    );
+
+    settings.add_num(
         "bb_padding_log2_minus_one",
         "The log2 of the size to insert dummy padding between basic blocks",
         r#"

@@ -1,0 +1,90 @@
+test compile precise-output
+set opt_level=speed
+set loop_align_log2=5
+set loop_align_max_padding=4
+target x86_64
+
+;; A loop header that needs more padding than the budget stays unaligned.
+function %nested(i32, i32) -> i32 {
+block0(v0: i32, v1: i32):
+    v2 = iconst.i32 0
+    jump block1(v2, v2)
+
+block1(v3: i32, v4: i32):
+    v5 = iconst.i32 0
+    jump block2(v5, v4)
+
+block2(v6: i32, v7: i32):
+    v8 = iadd v7, v6
+    v13 = iconst.i32 1
+    v9 = iadd v6, v13
+    v10 = icmp ult v9, v1
+    brif v10, block2(v9, v8), block3
+
+block3:
+    v14 = iconst.i32 1
+    v11 = iadd v3, v14
+    v12 = icmp ult v11, v0
+    brif v12, block1(v11, v8), block4
+
+block4:
+    return v8
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   uninit  %r8
+;   xorl %r8d, %r8d
+;   movq %r8, %rax
+;   jmp     label1
+; block1:
+;   uninit  %r9
+;   xorl %r9d, %r9d
+;   jmp     label2
+; block2:
+;   leal 1(%r9), %ecx
+;   leal (%rax, %r9), %eax
+;   cmpl %esi, %ecx
+;   jb      label3; j label4
+; block3:
+;   movq %rcx, %r9
+;   jmp     label2
+; block4:
+;   leal 1(%r8), %r8d
+;   cmpl %edi, %r8d
+;   jb      label5; j label6
+; block5:
+;   jmp     label1
+; block6:
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   xorl %r8d, %r8d
+;   movq %r8, %rax
+; block2: ; offset 0xa
+;   xorl %r9d, %r9d
+; block3: ; offset 0xd
+;   leal 1(%r9), %ecx
+;   addl %r9d, %eax
+;   cmpl %esi, %ecx
+;   jae 0x24
+; block4: ; offset 0x1c
+;   movq %rcx, %r9
+;   jmp 0xd
+; block5: ; offset 0x24
+;   addl $1, %r8d
+;   cmpl %edi, %r8d
+;   jb 0xa
+; block6: ; offset 0x34
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+

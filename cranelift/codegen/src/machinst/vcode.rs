@@ -733,6 +733,35 @@ impl<I: VCodeInst> VCode<I> {
     /// Returns the machine code itself, and optionally metadata
     /// and/or a disassembly, as an `EmitResult`. The `VCode` itself
     /// is consumed by the emission process.
+    /// The padding that aligns `block`, emitted at `offset`, as the header of
+    /// an innermost loop, or `None` if it is not one or should stay unaligned.
+    fn loop_header_padding(
+        &self,
+        block: BlockIndex,
+        offset: CodeOffset,
+        flags: &settings::Flags,
+    ) -> Option<CodeOffset> {
+        let log2 = flags.loop_align_log2();
+        if log2 == 0 || self.block_order.is_cold(block) {
+            return None;
+        }
+        let end = self.block_order.innermost_loop_end(block)?;
+        let max_insts = usize::from(flags.loop_align_max_insts());
+        if max_insts != 0 {
+            let insts: usize = (block.index()..end.index())
+                .map(BlockIndex::new)
+                .filter(|&b| !self.block_order.is_cold(b))
+                .map(|b| self.block_ranges.get(b.index()).len())
+                .sum();
+            if insts > max_insts {
+                return None;
+            }
+        }
+        let padding = offset.wrapping_neg() & ((1 << log2) - 1);
+        (padding != 0 && padding <= CodeOffset::from(flags.loop_align_max_padding()))
+            .then_some(padding)
+    }
+
     pub fn emit(
         mut self,
         regalloc: &regalloc2::Output,
@@ -835,6 +864,7 @@ impl<I: VCodeInst> VCode<I> {
             }
             assert_eq!(buffer.cur_offset(), new_offset);
 
+
             // The buffer maintains its deadline invariant per-`MachInst`:
             // after each instruction, ensure that the worst-case end of any
             // island the buffer might emit lies before the soonest deadline,
@@ -879,6 +909,23 @@ impl<I: VCodeInst> VCode<I> {
             // Now emit the regular block body.
 
             buffer.bind_label(MachLabel::from_block(block), state.ctrl_plane_mut());
+
+            // Align the header of an innermost loop when the loop is small
+            // enough and the padding within its budget. The label is bound
+            // first, so a branch to it at the end of the previous block is
+            // removed before the padding is measured; the padding then goes
+            // before the label.
+            if let Some(padding) = self.loop_header_padding(block, buffer.cur_offset(), flags) {
+                buffer.set_log2_min_function_alignment(flags.loop_align_log2());
+                let target = buffer.cur_offset() + padding;
+                buffer.pad_before_tail_labels(|buffer| {
+                    while target > buffer.cur_offset() {
+                        let nop = I::gen_nop((target - buffer.cur_offset()) as usize);
+                        nop.emit(buffer, &self.emit_info, &mut Default::default());
+                    }
+                });
+                assert_eq!(buffer.cur_offset(), target);
+            }
 
             if want_disasm {
                 writeln!(&mut disasm, "block{}:", block.index()).unwrap();
