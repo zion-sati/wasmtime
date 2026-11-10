@@ -1,0 +1,24 @@
+loop-align-16.csv: 131 benchmarks, first 2 iterations of each engine dropped
+geomean off/on of medians: 0.9917 (-0.83% for alignment)
+without the 4 noisy benchmarks: 1.0010 (+0.10%)
+noisy: libsodium/libsodium-box_easy2.wasm, libsodium/libsodium-secretbox_easy2.wasm, libsodium/libsodium-sodium_utils.wasm, noop/benchmark.wasm
+at least 2% faster with alignment: 4
+at least 2% slower with alignment: 2
+slowest with alignment (noisy benchmarks left out):
+  0.957  benchmarks/shootout/shootout-minicsv.wasm
+  0.973  benchmarks/spidermonkey/spidermonkey-regex.wasm
+  0.981  benchmarks/libsodium/libsodium-auth3.wasm
+  0.981  benchmarks/libsodium/libsodium-auth2.wasm
+  0.982  benchmarks/rust-wat/rust-wat.wasm
+  0.985  benchmarks/libsodium/libsodium-generichash3.wasm
+  0.985  benchmarks/libsodium/libsodium-kdf.wasm
+  0.987  benchmarks/libsodium/libsodium-box2.wasm
+fastest with alignment (noisy benchmarks left out):
+  1.147  benchmarks/wat-bytecode-interp/wat-bytecode-interp.wasm
+  1.029  benchmarks/hashset/benchmark.wasm
+  1.026  benchmarks/starlingmonkey/starlingmonkey-regex.wasm
+  1.021  benchmarks/rust-json/benchmark.wasm
+  1.020  benchmarks/libsodium/libsodium-core4.wasm
+  1.019  benchmarks/libsodium/libsodium-box8.wasm
+  1.018  benchmarks/libsodium/libsodium-box7.wasm
+  1.015  benchmarks/dotnet-raytracer/dotnet-raytracer.wasm
