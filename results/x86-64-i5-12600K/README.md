@@ -48,3 +48,8 @@ benchmark subprocess trapped (`unreachable` executed, the recorder's exit-status
 engine and benchmark were not recorded. Running every benchmark once per engine, and again with two pinned
 iterations per engine, passed, and the rerun (the data here) completed without failures. Run 2 also
 completed without failures.
+
+**Trap hunt.** Following the follow-up section of `BENCHMARKING-LOOP-ALIGNMENT.md`, every benchmark ran on
+its own, three iterations per engine (alignment off, and 32 bytes with at most 16 of padding), five rounds:
+1,310 runs, 7,860 iterations. None failed (`trap-hunt/failures.txt` is empty), so there are no failing logs
+and no padding dump. The trap from the first attempt has not recurred.
