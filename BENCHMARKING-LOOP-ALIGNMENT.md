@@ -105,3 +105,39 @@ off:
 On an Apple M1 Max, alignment makes loop timings stable across code placement
 but does not make them faster: a trial-division loop that runs between 1.00 and
 1.22 of its best time at 16 placements runs at about 1.21 at every aligned one.
+
+## Follow-up: find the trap
+
+The first attempt at run 1 stopped when one benchmark subprocess trapped
+(`unreachable` executed), without recording which engine or benchmark. Run
+every benchmark on its own, three iterations per engine, five times over, so a
+trap names its benchmark and engine. Each benchmark runs with alignment off and
+on separately, so a trap that happens with both is the benchmark's own.
+
+```sh
+cd sightglass
+mkdir -p trap-hunt
+for round in 1 2 3 4 5; do
+  for bench in $(grep -v '^#' benchmarks/all.suite | grep -v '^$'); do
+    for engine in off on; do
+      flags='-C cranelift-loop_align_log2=0'
+      [ $engine = on ] && flags='-C cranelift-loop_align_log2=5 -C cranelift-loop_align_max_padding=16'
+      log="trap-hunt/$(echo "$bench" | tr / _).$engine.$round.log"
+      if ! taskset -c 0-11 ./target/release/sightglass-cli benchmark --pin \
+          --benchmark-phase execution -i 3 -k \
+          -e /tmp/align-$engine.so --engine-flags "$flags" \
+          "benchmarks/$bench" > "$log" 2>&1; then
+        echo "FAILED round $round $engine $bench" | tee -a trap-hunt/failures.txt
+      fi
+    done
+  done
+done
+```
+
+Put `trap-hunt/failures.txt` (empty if nothing failed) and the logs of any
+failing runs in `results/x86-64-i5-12600K/trap-hunt/`.
+
+If a benchmark fails only with alignment on, also record its padding:
+`../wasmtime/target/release/wasmtime compile -C cranelift-loop_align_log2=5
+-C cranelift-loop_align_max_padding=16 -o aligned.cwasm benchmarks/<bench>`, then
+`../wasmtime/target/release/wasmtime objdump --addresses aligned.cwasm > aligned.txt`.
