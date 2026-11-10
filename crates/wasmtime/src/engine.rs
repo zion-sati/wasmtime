@@ -529,6 +529,9 @@ information about this check\
             | "is_pic"
             | "bb_padding_log2_minus_one"
             | "log2_min_function_alignment"
+            | "loop_align_log2"
+            | "loop_align_max_padding"
+            | "loop_align_max_insts"
             | "enable_compact_unwind_abi"
             | "machine_code_cfg_info"
             | "tls_model" // wasmtime doesn't use tls right now
